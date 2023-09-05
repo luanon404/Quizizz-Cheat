@@ -3,19 +3,19 @@ import time
 import uuid
 from typing import Optional
 
+import random
 import requests
 import websocket
 
 
 class Quizizz:
 
-    def __init__(self, power_up_slot: int = 100) -> None:
-        self.power_up_slot = power_up_slot
+    def __init__(self) -> None:
         self.session = requests.Session()
         self.headers = {
             "Host": "quizizz.com",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:107.0) Gecko/20100101 Firefox/107.0",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/117.0",
+            "Accept": "*/*",
             "Accept-Language": "en-US,en;q=0.5",
             "Accept-Encoding": "gzip, deflate, br",
             "Connection": "keep-alive",
@@ -26,77 +26,36 @@ class Quizizz:
             "Cache-Control": "no-cache"
         }
 
-    @staticmethod
-    def get_timestamp() -> str:
+    def getTimeStamp(self) -> str:
         return str(int(time.time() * 1000))
 
-    def get_x_csrf_token(self) -> str:
+    def getToken(self) -> str:
         url = "https://quizizz.com/join"
         self.session.get(url, headers=self.headers)
         return self.session.cookies.get("x-csrf-token")
-
-    def check_room(self, join_code: str, x_csrf_token: str) -> Optional[str]:
-        url = "https://game.quizizz.com/play-api/v5/checkRoom"
-        data = json.dumps({"roomCode": join_code})
-        headers = {**self.headers, **{
-            "Host": "game.quizizz.com",
-            "Accept": "application/json",
-            "Referer": "https://quizizz.com/",
-            "Content-Type": "application/json",
-            "experiment-name": "peekabooAndPrac2_exp",
-            "X-CSRF-TOKEN": x_csrf_token,
-            "Content-Length": str(len(data)),
-            "Origin": "https://quizizz.com",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-site"
-        }}
-        resp = self.session.post(url, data, headers=headers).json()
-        if resp.get("room", None):
-            return resp["room"]["hash"]
-        return None
-
-    def get_socket_sid(self) -> str:
+    
+    def getSocketSessionId(self) -> str:
         url = "https://socket.quizizz.com/_gsocket/sockUpg/?experiment=authRevamp&EIO=4&transport=polling"
         headers = {**self.headers, **{
             "Host": "socket.quizizz.com",
-            "Accept": "*/*",
             "Referer": "https://quizizz.com/",
             "Origin": "https://quizizz.com",
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-site"
         }}
-        resp = self.session.get(url, headers=headers).text
-        while resp[0].isdigit():
-            resp = resp[1:]
-        resp = json.loads(resp)
-        return resp["sid"]
-
-    def check_socket(self, sid: str) -> bool:
-        url = f"https://socket.quizizz.com/_gsocket/sockUpg/?experiment=authRevamp&EIO=4&transport=polling&sid={sid}"
-        data = "40"
-        headers = {**self.headers, **{
-            "Host": "socket.quizizz.com",
-            "Accept": "*/*",
-            "Referer": "https://quizizz.com/",
-            "Origin": "https://quizizz.com",
-            "Content-Length": "2",
-            "Content-Type": "text/plain;charset=UTF-8",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-site"
-        }}
-        resp = self.session.post(url, data, headers=headers).text
-        if resp != "ok":
-            return False
-        return True
-
-    def get_room_data(self, username: str, room_hash: str, sid: str) -> Optional[dict]:
+        resp = self.session.get(url, headers=headers)
+        raw_data = resp.text
+        while raw_data[0].isdigit():
+            raw_data = raw_data[1:]
+        data = json.loads(raw_data)
+        sid = data["sid"]
+        return sid
+    
+    def getRoomData(self, username: str, room_hash: str, sid: str) -> Optional[dict]:
         url = f"wss://socket.quizizz.com/_gsocket/sockUpg/?experiment=authRevamp&EIO=4&transport=websocket&sid={sid}"
         headers = {**self.headers, **{
             "Host": "socket.quizizz.com",
-            "Accept": "*/*",
             "Origin": "https://quizizz.com",
             "Sec-WebSocket-Version": "13",
             "Sec-WebSocket-Extensions": "permessage-deflate",
@@ -105,7 +64,7 @@ class Quizizz:
             "Sec-Fetch-Dest": "websocket",
             "Sec-Fetch-Mode": "websocket",
             "Sec-Fetch-Site": "same-site",
-            "Cookie": "; ".join([f"{x}={y}" for x, y in self.session.cookies.items()]),
+            "Cookie": "; ".join([f"{k}={v}" for k, v in self.session.cookies.items()]),
             "Upgrade": "websocket"
         }}
         ws = websocket.WebSocket()
@@ -126,24 +85,25 @@ class Quizizz:
                         "userAgent": self.headers["User-Agent"],
                         "uid": str(uuid.uuid4()),
                         "expName": "peekabooAndPrac2_exp",
-                        "expSlot": str(self.power_up_slot)
+                        "expSlot": "100" # Default
                     },
                     "powerupInternalVersion": "20",
-                    "__cid__": f"v5/join.|1.{self.get_timestamp()}"
+                    "__cid__": f"v5/join.|1.{self.getTimeStamp()}"
                 }])
                 ws.send(register_data)
             if recv.startswith("430"):
                 if "OK" not in recv:
                     return None
-                resp = ws.recv()
-                while resp[0].isdigit():
-                    resp = resp[1:]
-                resp = json.loads(resp)[1]
+                raw_data = ws.recv()
+                while raw_data[0].isdigit():
+                    raw_data = raw_data[1:]
+                data = json.loads(raw_data)[1]
                 ws.close()
-                return resp
+                return data
 
-    def get_right_answer(self, game_id: str):
-        url = f"https://quizizz.com/_api/main/game/{game_id}?_={self.get_timestamp()}"
+    def getRightAnswer(self, game_id: str) -> Optional[dict]:
+        result = {}
+        url = f"https://quizizz.com/_api/main/game/{game_id}?_={self.getTimeStamp()}"
         headers = {**self.headers, **{
             "Accept": "application/json, text/plain, */*",
             "Referer": f"https://quizizz.com/admin/quiz/{game_id}/startV4?fromBrowserLoad=true&view=summary&didInitPractice=false",
@@ -152,12 +112,51 @@ class Quizizz:
             "Sec-Fetch-Site": "same-origin"
         }}
         resp = self.session.get(url, headers=headers)
-        result = {}
-        for question in resp.json()["data"]["questions"]:
-            result[question["_id"]] = question["structure"]["answer"]
+        data = resp.json()
+        if data["success"]:
+            for question in resp.json()["data"]["questions"]:
+                result[question["_id"]] = question["structure"]["answer"]
         return result
 
-    def post_answer(self, username: str, room_hash: str, x_csrf_token: str, question_id: str, question_answer: str, room_version_id: str) -> dict:
+    def checkRoom(self, join_code: str, token: str) -> Optional[str]:
+        url = "https://game.quizizz.com/play-api/v5/checkRoom"
+        data = json.dumps({"roomCode": join_code})
+        headers = {**self.headers, **{
+            "Host": "game.quizizz.com",
+            "Accept": "application/json",
+            "Referer": "https://quizizz.com/",
+            "Content-Type": "application/json",
+            "experiment-name": "peekabooAndPrac2_exp",
+            "X-CSRF-TOKEN": token,
+            "Content-Length": str(len(data)),
+            "Origin": "https://quizizz.com",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-site"
+        }}
+        resp = self.session.post(url, data, headers=headers)
+        data = resp.json()
+        if "room" in data:
+            return data["room"]["hash"]
+
+    def checkSocket(self, sid: str) -> bool:
+        url = f"https://socket.quizizz.com/_gsocket/sockUpg/?experiment=authRevamp&EIO=4&transport=polling&sid={sid}"
+        data = "40"
+        headers = {**self.headers, **{
+            "Host": "socket.quizizz.com",
+            "Referer": "https://quizizz.com/",
+            "Origin": "https://quizizz.com",
+            "Content-Length": "2",
+            "Content-Type": "text/plain;charset=UTF-8",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-site"
+        }}
+        resp = self.session.post(url, data, headers=headers)
+        raw_data = resp.text
+        return raw_data == "ok"
+
+    def postAnswer(self, username: str, room_hash: str, token: str, question_id: str, question_answer: str, room_version_id: str) -> dict:
         url = "https://game.quizizz.com/play-api/v4/proceedGame"
         data = json.dumps({
             "roomHash": room_hash,
@@ -222,7 +221,7 @@ class Quizizz:
             "Referer": "https://quizizz.com/",
             "Content-Type": "application/json",
             "experiment-name": "main_main",
-            "X-CSRF-TOKEN": x_csrf_token,
+            "X-CSRF-TOKEN": token,
             "Content-Length": str(len(data)),
             "Origin": "https://quizizz.com",
             "Sec-Fetch-Dest": "empty",
@@ -230,35 +229,70 @@ class Quizizz:
             "Sec-Fetch-Site": "same-site"
         }}
         resp = self.session.post(url, data, headers=headers)
-        return resp.json()
+        data = resp.json()
+        return data
 
 
 if __name__ == "__main__":
+    print("5800 points / correct question")
+    print("5000 points / wrong question")
+    print("="*30)
     print("Input join code")
     join_code = input(">>> ")
     print("Input your username")
     username = input(">>> ")
-    print("Input delay per question")
+    print("Input delay per question (second)")
     delay = input(">>> ")
     quizizz = Quizizz()
-    x_csrf_token = quizizz.get_x_csrf_token()
-    room_hash = quizizz.check_room(join_code, x_csrf_token)
+    token = quizizz.getToken()
+    room_hash = quizizz.checkRoom(join_code, token)
     if room_hash is None:
         print("Wrong join code!")
         exit()
-    sid = quizizz.get_socket_sid()
-    if not quizizz.check_socket(sid):
-        print("Fail to join room!")
+    sid = quizizz.getSocketSessionId()
+    if not quizizz.checkSocket(sid):
+        print("Failed to join room!")
         exit()
-    room_data = quizizz.get_room_data(username, room_hash, sid)
+    room_data = quizizz.getRoomData(username, room_hash, sid)
     if room_data is None:
-        print("Fail to register socket!")
+        print("Failed to get room data!")
         exit()
     room_version_id = room_data["room"]["versionId"]
     questions = room_data["room"]["questions"]
-    answers = quizizz.get_right_answer(room_hash)
-    input("Press Enter to answer...")
+    answers = quizizz.getRightAnswer(room_hash)
+    random_choice = None
+    if not answers:
+        print("Can't get an answer. Would you like to choose randomly?")
+        print("Enter 'Y' for Yes or any other key for No (default is Yes)")
+        user_input = input(">>> ").strip().lower()
+        if user_input and user_input != "y":
+            random_choice = False
+        else:
+            random_choice = True
+    input("Press Enter to start answering...")
+    correct_question = 0
+    wrong_question = 0
+    total_point = 0
     for index, question_id in enumerate(questions.keys()):
-        print(f"{index + 1}-{quizizz.post_answer(username, room_hash, x_csrf_token, question_id, answers[question_id], room_version_id)['response']['scoreBreakup']['total']}")
+        if random_choice:
+            question_answer = random.randint(0, 3)
+        else:
+            question_answer = answers.get(question_id, 0)
+        point = quizizz.postAnswer(username, room_hash, token, question_id, question_answer, room_version_id)["response"]["scoreBreakup"]["total"]
+        total_point += point
+        result = "Unknown"
+        if point == 5800:
+            correct_question += 1
+            result = "CORRECT"
+        elif point == 5000:
+            wrong_question += 1
+            result = "WRONG"
+        else:
+            print("Something wrong!!")
+            print(f"DEBUG - {point}")
+        print(f"Question {index + 1}, status _{result}_, point _{point}_, total point _{total_point}_")
         time.sleep(int(delay))
     print("Done!")
+    print(f"Correct question: {correct_question}")
+    print(f"Wrong question: {wrong_question}")
+    print("Please give me star on Github if u like this <3")
