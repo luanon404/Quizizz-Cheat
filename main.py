@@ -295,4 +295,5 @@ if __name__ == "__main__":
     print("Done!")
     print(f"Correct question: {correct_question}")
     print(f"Wrong question: {wrong_question}")
+    print(f"Total point: {total_point}")
     print("Please give me star on Github if u like this <3")
