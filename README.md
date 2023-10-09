@@ -2,9 +2,10 @@
 Tool to cheat quizizz.
 
 # Requirements
-- `pip install requests websocket`
+- `pip install requests websocket-client`
+
 # How to use?
-- Run main.py file (make sure you installed requests, websocket library).
+- Run main.py file (make sure you installed requests, websocket-client library).
 
 Public Quiz | Private Quiz |
 --- | --- |
